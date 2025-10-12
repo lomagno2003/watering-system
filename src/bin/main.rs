@@ -13,11 +13,14 @@ use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use log::info;
 
+use watering_system::sensors::{SensorsFacade, SensorsValues};
+
 extern crate alloc;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
+
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -45,8 +48,11 @@ async fn main(spawner: Spawner) {
     // TODO: Spawn some tasks
     let _ = spawner;
 
+    let mut sensors_facade: SensorsFacade = SensorsFacade::new(peripherals.GPIO35, peripherals.ADC1);
+
     loop {
-        info!("Hello world!");
+        let sensors_values: SensorsValues = sensors_facade.read_values().await;
+        info!("Got value: {:?}", sensors_values.soil_moisture_sensor_value);
         Timer::after(Duration::from_secs(1)).await;
     }
 
