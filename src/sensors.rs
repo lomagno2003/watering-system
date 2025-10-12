@@ -89,7 +89,7 @@ impl<'lifetime> SensorsFacade<'lifetime> {
                     error!("Sensors: Soil Moisture read error: {:?}", e);
                 }
             }
-            Timer::after(Duration::from_secs(1)).await;
+            Timer::after(Duration::from_millis(100)).await;
         }
 
         let temperature: f32;
@@ -107,7 +107,7 @@ impl<'lifetime> SensorsFacade<'lifetime> {
                     error!("Sensors: DHT22 read error: {:?}", e);
                 }
             }
-            Timer::after(Duration::from_secs(1)).await;
+            Timer::after(Duration::from_millis(100)).await;
         }
         
         return SensorsValues::new(

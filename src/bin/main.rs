@@ -14,6 +14,7 @@ use esp_hal::timer::timg::TimerGroup;
 use log::info;
 
 use watering_system::sensors::{SensorsFacade, SensorsValues};
+use watering_system::pump::{PumpFacade};
 
 extern crate alloc;
 
@@ -49,6 +50,7 @@ async fn main(spawner: Spawner) {
     let _ = spawner;
 
     let mut sensors_facade: SensorsFacade = SensorsFacade::new(peripherals.GPIO35, peripherals.ADC1, peripherals.GPIO33);
+    let mut pump_facade: PumpFacade = PumpFacade::new(peripherals.GPIO26);
 
     loop {
         let sensors_values: SensorsValues = sensors_facade.read_values().await;
@@ -57,7 +59,13 @@ async fn main(spawner: Spawner) {
             sensors_values.temperature, 
             sensors_values.humidity);
 
-        Timer::after(Duration::from_secs(1)).await;
+        if sensors_values.soil_moisture_sensor_value < 2000 {
+            pump_facade.turn_on();
+        } else {
+            pump_facade.turn_off();
+        }
+
+        Timer::after(Duration::from_millis(2000)).await;
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.0/examples/src/bin
