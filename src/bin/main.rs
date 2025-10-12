@@ -48,11 +48,15 @@ async fn main(spawner: Spawner) {
     // TODO: Spawn some tasks
     let _ = spawner;
 
-    let mut sensors_facade: SensorsFacade = SensorsFacade::new(peripherals.GPIO35, peripherals.ADC1);
+    let mut sensors_facade: SensorsFacade = SensorsFacade::new(peripherals.GPIO35, peripherals.ADC1, peripherals.GPIO33);
 
     loop {
         let sensors_values: SensorsValues = sensors_facade.read_values().await;
-        info!("Got value: {:?}", sensors_values.soil_moisture_sensor_value);
+        info!("Sensors values: {:?}, {:?}, {:?}", 
+            sensors_values.soil_moisture_sensor_value, 
+            sensors_values.temperature, 
+            sensors_values.humidity);
+
         Timer::after(Duration::from_secs(1)).await;
     }
 
