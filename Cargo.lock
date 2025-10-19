@@ -165,6 +165,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "defmt"
+version = "0.3.100"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0963443817029b2024136fc4dd07a5107eb8f977eaf18fcd1fdeb11306b64ad"
+dependencies = [
+ "defmt 1.0.1",
+]
+
+[[package]]
+name = "defmt"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "548d977b6da32fa1d1fda2876453da1e7df63ad0304c8b3dae4dbe7b96f39b78"
+dependencies = [
+ "bitflags 1.3.2",
+ "defmt-macros",
+]
+
+[[package]]
+name = "defmt-macros"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d4fc12a85bcf441cfe44344c4b72d58493178ce635338a3f3b78943aceb258e"
+dependencies = [
+ "defmt-parser",
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "defmt-parser"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "defmt-rtt"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93d5a25c99d89c40f5676bec8cefe0614f17f0f40e916f98e345dae941807f9e"
+dependencies = [
+ "critical-section",
+ "defmt 1.0.1",
+]
+
+[[package]]
 name = "delegate"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -182,6 +233,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "crypto-common",
+]
+
+[[package]]
+name = "dns-protocol"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96e95919581371ae96cbf05b0aeec65cdc20bd3a2dca282ab6af808fbddaddb4"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -279,7 +339,7 @@ dependencies = [
  "embassy-time 0.5.0",
  "embedded-io-async",
  "embedded-nal-async",
- "heapless",
+ "heapless 0.8.0",
  "log",
  "managed",
  "smoltcp",
@@ -302,7 +362,7 @@ dependencies = [
  "embedded-io-async",
  "futures-sink",
  "futures-util",
- "heapless",
+ "heapless 0.8.0",
 ]
 
 [[package]]
@@ -316,7 +376,7 @@ dependencies = [
  "embedded-io-async",
  "futures-core",
  "futures-sink",
- "heapless",
+ "heapless 0.8.0",
 ]
 
 [[package]]
@@ -368,7 +428,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc55c748d16908a65b166d09ce976575fb8852cf60ccd06174092b41064d8f83"
 dependencies = [
  "embassy-executor",
- "heapless",
+ "heapless 0.8.0",
 ]
 
 [[package]]
@@ -513,7 +573,7 @@ dependencies = [
  "cfg-if",
  "esp-config",
  "esp-println",
- "heapless",
+ "heapless 0.8.0",
  "semihosting",
 ]
 
@@ -617,6 +677,17 @@ dependencies = [
  "log",
  "portable-atomic",
  "static_cell",
+]
+
+[[package]]
+name = "esp-hal-mdns"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8545a7f5388cf66e57f5a4fef6c7b5d45f086a292ac74afd9eeaab031e717a57"
+dependencies = [
+ "dns-protocol",
+ "heapless 0.9.1",
+ "log",
 ]
 
 [[package]]
@@ -895,6 +966,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "heapless"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1edcd5a338e64688fbdcb7531a846cfd3476a54784dcb918a0844682bc7ada5"
+dependencies = [
+ "hash32",
+ "stable_deref_trait",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1099,6 +1180,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-error-attr2"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96de42df36bb9bba5542fe9f1a054b8cc87e172759a1868aa05c1f3acc89dfc5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
+name = "proc-macro-error2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802"
+dependencies = [
+ "proc-macro-error-attr2",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1176,6 +1279,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-mqtt"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f71160765f368fd9a84e0955e2ddb6d64ac9018fee1c5323354d6d08c816b40"
+dependencies = [
+ "defmt 0.3.100",
+ "embedded-io",
+ "embedded-io-async",
+ "heapless 0.8.0",
+ "rand_core 0.6.4",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1239,7 +1355,7 @@ dependencies = [
  "bitflags 1.3.2",
  "byteorder",
  "cfg-if",
- "heapless",
+ "heapless 0.8.0",
  "log",
  "managed",
 ]
@@ -1304,6 +1420,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1383,20 +1519,25 @@ name = "watering-system"
 version = "0.1.0"
 dependencies = [
  "critical-section",
+ "defmt-rtt",
  "embassy-executor",
  "embassy-net",
  "embassy-time 0.4.0",
  "embedded-dht-rs",
  "embedded-io",
  "embedded-io-async",
+ "embedded-nal-async",
  "esp-alloc",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-hal-embassy",
+ "esp-hal-mdns",
  "esp-println",
  "esp-wifi",
+ "heapless 0.9.1",
  "log",
+ "rust-mqtt",
  "smoltcp",
  "static_cell",
 ]
