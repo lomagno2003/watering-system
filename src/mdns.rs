@@ -8,8 +8,9 @@ use esp_hal_mdns::MdnsQuery;
 use log::info;
 
 use heapless::String;
+use static_cell::StaticCell;
 
-const BUFF_SIZE: usize = 4096;
+const BUFF_SIZE: usize = 256;
 
 pub struct MdnsFacade;
 
@@ -43,17 +44,22 @@ impl MdnsFacade {
             .join_multicast_group(IpAddress::v4(224, 0, 0, 251))
             .expect("mDNS: join multicast 224.0.0.251 failed");
 
-        let mut rx_meta: [udp::PacketMetadata; 4] = [udp::PacketMetadata::EMPTY; 4];
-        let mut rx_buff: [u8; BUFF_SIZE] = [0; BUFF_SIZE];
-        let mut tx_meta: [udp::PacketMetadata; 4] = [udp::PacketMetadata::EMPTY; 4];
-        let mut tx_buff: [u8; BUFF_SIZE] = [0; BUFF_SIZE];
+        static RX_META: StaticCell<[udp::PacketMetadata; 4]> = StaticCell::new();
+        static RX_BUFF: StaticCell<[u8; BUFF_SIZE]> = StaticCell::new();
+        static TX_META: StaticCell<[udp::PacketMetadata; 4]> = StaticCell::new();
+        static TX_BUFF: StaticCell<[u8; BUFF_SIZE]> = StaticCell::new();
+        
+        let rx_meta = RX_META.init([udp::PacketMetadata::EMPTY; 4]);
+        let rx_buff = RX_BUFF.init([0; BUFF_SIZE]);
+        let tx_meta = TX_META.init([udp::PacketMetadata::EMPTY; 4]);
+        let tx_buff = TX_BUFF.init([0; BUFF_SIZE]);
 
         let mut sock = udp::UdpSocket::new(
             *stack,
-            &mut rx_meta,
-            &mut rx_buff,
-            &mut tx_meta,
-            &mut tx_buff,
+            rx_meta,
+            rx_buff,
+            tx_meta,
+            tx_buff,
         );
         sock.bind(5353)
             .expect("mDNS: bind(5353) failed — is another mDNS/responder running?");
@@ -66,7 +72,7 @@ impl MdnsFacade {
         );
         let mdns_peer = (Ipv4Address::new(224, 0, 0, 251), 5353);
         let deadline = Instant::now() + Duration::from_millis(5000);
-        let mut rx = [0u8; 1024];
+        let mut rx = [0u8; 128];
 
         // Local state variables for caching partial mDNS records
         let mut cached_hostname: Option<heapless::String<64>> = None;
@@ -83,7 +89,7 @@ impl MdnsFacade {
             if let Ok((n, _peer)) = sock.recv_from(&mut rx).await {
                 info!("mDNS: Got response: {:?} {:?}", n, _peer);
 
-                let mut ascii: String<1024> = String::new();
+                let mut ascii: String<128> = String::new();
                 for &b in &rx[..n] {
                     let ch = if b.is_ascii_graphic() || b == b' ' {
                         b as char
@@ -119,7 +125,7 @@ impl MdnsFacade {
                 // no result yet: back off a bit, then extend the window
                 Timer::after(Duration::from_millis(250)).await;
             }
-            Timer::after(Duration::from_millis(40)).await;
+            Timer::after(Duration::from_millis(100)).await;
         }
     }
 

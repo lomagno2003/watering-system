@@ -6,7 +6,7 @@ use esp_hal::gpio::{Flex, InputConfig, OutputConfig, DriveMode, Pull};
 use esp_hal::Blocking;
 use esp_hal::delay::Delay;
 
-use log::{info, error};
+use log::{info, warn};
 
 use embedded_dht_rs::dht22::Dht22;
 
@@ -86,7 +86,7 @@ impl<'lifetime> SensorsFacade<'lifetime> {
                     break;
                 }
                 Err(e) => {
-                    error!("Sensors: Soil Moisture read error: {:?}", e);
+                    warn!("Sensors: Soil Moisture read error: {:?}", e);
                 }
             }
             Timer::after(Duration::from_millis(100)).await;
@@ -104,7 +104,7 @@ impl<'lifetime> SensorsFacade<'lifetime> {
                     break;
                 }
                 Err(e) => {
-                    error!("Sensors: DHT22 read error: {:?}", e);
+                    warn!("Sensors: DHT22 read error: {:?}", e);
                 }
             }
             Timer::after(Duration::from_millis(100)).await;

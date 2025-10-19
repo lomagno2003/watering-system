@@ -19,12 +19,12 @@ use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 
-use watering_system::wifi::{WiFiFacade, WiFiFacadeConfig};
-use watering_system::mqtt::{MqttFacade, MqttFacadeConfig};
-use watering_system::mdns::{MdnsFacade};
 use watering_system::home_assistant::{HomeAssistantFacade, HomeAssistantFacadeConfig};
+use watering_system::mdns::MdnsFacade;
+use watering_system::mqtt::{MqttFacade, MqttFacadeConfig};
+use watering_system::pump::PumpFacade;
 use watering_system::sensors::{SensorsFacade, SensorsValues};
-use watering_system::pump::{PumpFacade};
+use watering_system::wifi::{WiFiFacade, WiFiFacadeConfig};
 
 extern crate alloc;
 
@@ -32,11 +32,9 @@ extern crate alloc;
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-
 static WIFI_INIT: StaticCell<esp_wifi::EspWifiController> = StaticCell::new();
 static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
 static NET_STACK: StaticCell<Stack<'static>> = StaticCell::new();
-
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -55,51 +53,89 @@ async fn main(spawner: Spawner) {
     info!("Embassy initialized!");
     let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let timer1 = TimerGroup::new(peripherals.TIMG0);
-    let wifi_init =
-        WIFI_INIT.init(esp_wifi::init(timer1.timer0, rng).expect("Failed to initialize WIFI/BLE controller"));
+    let wifi_init = WIFI_INIT.init(
+        esp_wifi::init(timer1.timer0, rng).expect("Failed to initialize WIFI/BLE controller"),
+    );
     let (mut _wifi_controller, _interfaces) = esp_wifi::wifi::new(wifi_init, peripherals.WIFI)
         .expect("Failed to initialize WIFI controller");
-    let stack_resources= RESOURCES.init(StackResources::<5>::new());
+    let stack_resources = RESOURCES.init(StackResources::<5>::new());
     let (mut wifi_facade, stack_tmp, _runner) = WiFiFacade::new(
         WiFiFacadeConfig::from_env(),
-        _wifi_controller, 
+        _wifi_controller,
         _interfaces,
-        stack_resources);
-    let stack = NET_STACK.init(stack_tmp);
+        stack_resources,
+    );
+    let stack: &'static mut Stack<'static> = NET_STACK.init(stack_tmp);
+    info!(
+        "Free: {}, Used: {}",
+        esp_alloc::HEAP.free(),
+        esp_alloc::HEAP.used()
+    );
 
     let mdns = MdnsFacade::new();
 
     info!("Wifi and MQTT facades initialized. Connecting to Wifi..");
-    wifi_facade.connect().await.expect("Failed to connect to WiFi");
+    wifi_facade
+        .connect()
+        .await
+        .expect("Failed to connect to WiFi");
     spawner.spawn(net_task(_runner)).unwrap();
-    
+
     info!("Wifi connected! Fetching broker using mDNS...");
     let (ip, port) = mdns.query_service(env!("MQTT_SERVICE"), stack).await;
     info!("Got IP: {} and Port: {}", ip, port);
 
-    let mut mqtt_facade: MqttFacade = MqttFacade::new(MqttFacadeConfig::new(ip, port, "MyDevice"));
-    let home_assistant: HomeAssistantFacade = HomeAssistantFacade::new(HomeAssistantFacadeConfig::new_from_env());
+    let mqtt_facade_config = MqttFacadeConfig::new(ip, port, "MyDevice", "testing_topic");
+    spawner
+        .spawn(mqtt_publisher_task(mqtt_facade_config.clone(), stack))
+        .unwrap();
+    spawner
+        .spawn(mqtt_receiver_task(mqtt_facade_config.clone(), stack))
+        .unwrap();
 
-    info!("IP Fetched! Sending MQTT Message..");
-    mqtt_facade.send_message(stack, home_assistant.get_device_discovery_mqtt_message()).await;
+    let home_assistant: HomeAssistantFacade =
+        HomeAssistantFacade::new(HomeAssistantFacadeConfig::new_from_env());
+    info!("IP Fetched! MQTT worker started..");
+    info!(
+        "Memory after network setup - Free: {}, Used: {}",
+        esp_alloc::HEAP.free(),
+        esp_alloc::HEAP.used()
+    );
 
-    let mut sensors_facade: SensorsFacade = SensorsFacade::new(peripherals.GPIO35, peripherals.ADC1, peripherals.GPIO33);
-    let mut pump_facade: PumpFacade = PumpFacade::new(peripherals.GPIO26);
+    let mut sensors_facade: SensorsFacade =
+        SensorsFacade::new(peripherals.GPIO35, peripherals.ADC1, peripherals.GPIO33);
+    let mut pump_facade: PumpFacade = PumpFacade::new(peripherals.GPIO27);
+
+    let mut mqtt_facade = MqttFacade::new(mqtt_facade_config);
+    mqtt_facade.send_message(home_assistant.get_device_discovery_topic_and_content().unwrap());
 
     loop {
         let sensors_values: SensorsValues = sensors_facade.read_values().await;
-        info!("Sensors values: {:?}, {:?}, {:?}", 
-            sensors_values.soil_moisture_sensor_value, 
-            sensors_values.temperature, 
-            sensors_values.humidity);
+        info!(
+            "Sensors values: {:?}, {:?}, {:?}",
+            sensors_values.soil_moisture_sensor_value,
+            sensors_values.temperature,
+            sensors_values.humidity
+        );
 
-        if sensors_values.soil_moisture_sensor_value < 2000 {
-            pump_facade.turn_on();
-        } else {
-            pump_facade.turn_off();
+        let message = home_assistant.get_state_mqtt_message(sensors_values);
+        mqtt_facade.send_message(message.unwrap());
+
+        match mqtt_facade.poll_message() {
+            Some(message) => {
+                info!("Received message: {:?}", message.content);
+                if pump_facade.is_on() == true {
+                    info!("Pump is on, turning off..");
+                    pump_facade.turn_off();
+                } else {
+                    info!("Pump is off, turning on..");
+                    pump_facade.turn_on();
+                }
+            }
+            None => {
+                info!("No message received");
+            }
         }
-
-        mqtt_facade.send_message(stack, home_assistant.get_state_mqtt_message(sensors_values)).await;
 
         Timer::after(Duration::from_millis(2000)).await;
     }
@@ -108,6 +144,18 @@ async fn main(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn net_task(mut runner: embassy_net::Runner<'static, esp_wifi::wifi::WifiDevice<'static>>) -> ! {
+async fn net_task(
+    mut runner: embassy_net::Runner<'static, esp_wifi::wifi::WifiDevice<'static>>,
+) -> ! {
     runner.run().await
+}
+
+#[embassy_executor::task]
+async fn mqtt_publisher_task(mqtt_facade_config: MqttFacadeConfig, stack: &'static Stack<'static>) -> ! {
+    MqttFacade::new(mqtt_facade_config).run_publisher_worker(stack).await
+}
+
+#[embassy_executor::task]
+async fn mqtt_receiver_task(mqtt_facade_config: MqttFacadeConfig, stack: &'static Stack<'static>) -> ! {
+    MqttFacade::new(mqtt_facade_config).run_receiver_worker(stack).await
 }
