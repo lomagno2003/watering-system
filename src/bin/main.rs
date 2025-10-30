@@ -85,7 +85,10 @@ async fn main(spawner: Spawner) {
     let (ip, port) = mdns.query_service(env!("MQTT_SERVICE"), stack).await;
     info!("Got IP: {} and Port: {}", ip, port);
 
-    let mqtt_facade_config = MqttFacadeConfig::new(ip, port, "MyDevice", "testing_topic");
+    let home_assistant: HomeAssistantFacade =
+        HomeAssistantFacade::new(HomeAssistantFacadeConfig::new_from_env());
+    let pump_topic = home_assistant.get_pump_topic();
+    let mqtt_facade_config = MqttFacadeConfig::new(ip, port, "MyDevice", &pump_topic);
     spawner
         .spawn(mqtt_publisher_task(mqtt_facade_config.clone(), stack))
         .unwrap();
@@ -93,8 +96,6 @@ async fn main(spawner: Spawner) {
         .spawn(mqtt_receiver_task(mqtt_facade_config.clone(), stack))
         .unwrap();
 
-    let home_assistant: HomeAssistantFacade =
-        HomeAssistantFacade::new(HomeAssistantFacadeConfig::new_from_env());
     info!("IP Fetched! MQTT worker started..");
     info!(
         "Memory after network setup - Free: {}, Used: {}",
@@ -107,7 +108,14 @@ async fn main(spawner: Spawner) {
     let mut pump_facade: PumpFacade = PumpFacade::new(peripherals.GPIO27);
 
     let mut mqtt_facade = MqttFacade::new(mqtt_facade_config);
-    mqtt_facade.send_message(home_assistant.get_device_discovery_topic_and_content().unwrap());
+    mqtt_facade.send_message(home_assistant.get_discovery_message_temperature().unwrap());
+    mqtt_facade.send_message(home_assistant.get_discovery_message_humidity().unwrap());
+    mqtt_facade.send_message(
+        home_assistant
+            .get_discovery_message_soil_moisture()
+            .unwrap(),
+    );
+    mqtt_facade.send_message(home_assistant.get_discovery_message_pump().unwrap());
 
     loop {
         let sensors_values: SensorsValues = sensors_facade.read_values().await;
@@ -118,7 +126,7 @@ async fn main(spawner: Spawner) {
             sensors_values.humidity
         );
 
-        let message = home_assistant.get_state_mqtt_message(sensors_values);
+        let message = home_assistant.get_state_mqtt_message(sensors_values, pump_facade.is_on());
         mqtt_facade.send_message(message.unwrap());
 
         match mqtt_facade.poll_message() {
@@ -151,11 +159,21 @@ async fn net_task(
 }
 
 #[embassy_executor::task]
-async fn mqtt_publisher_task(mqtt_facade_config: MqttFacadeConfig, stack: &'static Stack<'static>) -> ! {
-    MqttFacade::new(mqtt_facade_config).run_publisher_worker(stack).await
+async fn mqtt_publisher_task(
+    mqtt_facade_config: MqttFacadeConfig,
+    stack: &'static Stack<'static>,
+) -> ! {
+    MqttFacade::new(mqtt_facade_config)
+        .run_publisher_worker(stack)
+        .await
 }
 
 #[embassy_executor::task]
-async fn mqtt_receiver_task(mqtt_facade_config: MqttFacadeConfig, stack: &'static Stack<'static>) -> ! {
-    MqttFacade::new(mqtt_facade_config).run_receiver_worker(stack).await
+async fn mqtt_receiver_task(
+    mqtt_facade_config: MqttFacadeConfig,
+    stack: &'static Stack<'static>,
+) -> ! {
+    MqttFacade::new(mqtt_facade_config)
+        .run_receiver_worker(stack)
+        .await
 }

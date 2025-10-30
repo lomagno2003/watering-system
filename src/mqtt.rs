@@ -18,21 +18,24 @@ use rust_mqtt::{
 };
 use static_cell::StaticCell;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct MqttFacadeConfig {
     pub broker_ip: IpAddr,
     pub broker_port: u16,
     pub client_id: &'static str,
-    pub topic_id: &'static str,
+    pub topic_id: String<MAX_TOPIC>,
 }
 
 impl MqttFacadeConfig {
-    pub fn new(broker_ip: IpAddr, broker_port: u16, client_id: &'static str, topic_id: &'static str) -> Self {
+    pub fn new(broker_ip: IpAddr, broker_port: u16, client_id: &'static str, topic_id: &str) -> Self {
+        let mut topic = String::new();
+        topic.push_str(topic_id).expect("Topic too long");
+        
         Self {
             broker_ip,
             broker_port,
             client_id,
-            topic_id,
+            topic_id: topic,
         }
     }
 }
@@ -56,16 +59,16 @@ impl MqttMessage {
         Some(Self { topic, content })
     }
 }
-const IN_CAP: usize = 4;
-const OUT_CAP: usize = 4;
+const IN_CAP: usize = 5;
+const OUT_CAP: usize = 5;
 const MAX_TOPIC: usize = 64;
-const MAX_PAYLOAD: usize = 256;
+const MAX_PAYLOAD: usize = 512;
 
 const MQTT_SEND_BUFFER_SIZE: usize = 2048;
 const MQTT_RECV_BUFFER_SIZE: usize = 2048;
-const TCP_SEND_BUFFER_SIZE: usize = 256;
-const TCP_RECV_BUFFER_SIZE: usize = 256;
-const QUALITY_OF_SERVICE: QualityOfService = QualityOfService::QoS0;
+const TCP_SEND_BUFFER_SIZE: usize = 2048;
+const TCP_RECV_BUFFER_SIZE: usize = 2048;
+const QUALITY_OF_SERVICE: QualityOfService = QualityOfService::QoS1;
 
 static INBOUND: Channel<CriticalSectionRawMutex, MqttMessage, IN_CAP> = Channel::new();
 static OUTBOUND: Channel<CriticalSectionRawMutex, MqttMessage, OUT_CAP> = Channel::new();
@@ -131,7 +134,7 @@ impl MqttFacade {
             info!("MqttWorker - Publisher: TCP client state created");
 
             let tcp_client = TcpClient::new(*stack, &state);
-            info!("MqttWorker - Publisher: TCP client created, attempting connection...");
+            info!("MqttWorker - Publisher: TCP client created, attempting connection to {} and port {}", self._config.broker_ip, self._config.broker_port,);
 
             let tcp_connection = match tcp_client
                 .connect(SocketAddr::new(
@@ -181,6 +184,8 @@ impl MqttFacade {
             let message = OUTBOUND.receive().await;
             info!("MqttWorker - Publisher: Attempting to send message (topic: {} bytes, content: {} bytes)...", 
                     message.topic.len(), message.content.len());
+            info!("MqttWorker - Publisher: Attempting to send message (topic: {}, content: {})", 
+                    message.topic.as_str(), message.content);
 
             match mqtt_client
                 .send_message(
@@ -188,9 +193,7 @@ impl MqttFacade {
                     message.content.as_bytes(),
                     QUALITY_OF_SERVICE,
                     false,
-                )
-                .await
-            {
+                ).await {
                 Ok(_) => {
                     info!("MqttWorker - Publisher: Message sent successfully");
                 }
@@ -280,9 +283,9 @@ impl MqttFacade {
                 }
             };
 
-            match mqtt_client.subscribe_to_topic(self._config.topic_id).await {
+            match mqtt_client.subscribe_to_topic(self._config.topic_id.as_str()).await {
                 Ok(_) => {
-                    info!("MqttWorker - Receiver: Subscribed to topic {}", self._config.topic_id);
+                    info!("MqttWorker - Receiver: Subscribed to topic {}", self._config.topic_id.as_str());
                 }
                 Err(e) => {
                     error!("MqttWorker - Receiver: Error when subscribing to topic: {}", e);
@@ -299,7 +302,7 @@ impl MqttFacade {
                         Ok(content_str) => {
                             let message = MqttMessage::new(topic, content_str);
                             
-                            info!("MqttWorker - Receiver: Enqueuing message with content: {:?}", content_str);
+                            info!("MqttWorker - Receiver: Received message with content: {:?}", content_str);
                             if let Some(msg) = message {
                                 if INBOUND.try_send(msg).is_err() {
                                     warn!("MqttWorker - Receiver: Message queue full, dropping message");
