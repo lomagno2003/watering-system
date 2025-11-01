@@ -10,16 +10,18 @@ use log::{info, warn};
 
 use embedded_dht_rs::dht22::Dht22;
 
+const SOIL_MOISTURE_MIN_VALUE: u16 = 900;
+const SOIL_MOISTURE_MAX_VALUE: u16 = 3500;
 
 pub struct SensorsValues {
-    pub soil_moisture_sensor_value: u16,
+    pub soil_moisture_sensor_value: f32,
     pub temperature: f32,
     pub humidity: f32,
 }
 
 impl SensorsValues {
     pub fn new(
-        soil_moisture_sensor_value: u16,
+        soil_moisture_sensor_value: f32,
         temperature: f32,
         humidity: f32,
     ) -> Self {
@@ -92,6 +94,16 @@ impl<'lifetime> SensorsFacade<'lifetime> {
             Timer::after(Duration::from_millis(100)).await;
         }
 
+        let mut soil_moisture_percent_value: f32 = 
+            (soil_moisture_sensor_value as f32 - SOIL_MOISTURE_MIN_VALUE as f32) 
+            / (SOIL_MOISTURE_MAX_VALUE as f32)
+            * 100.0;
+        if soil_moisture_percent_value < 0.0 {
+            soil_moisture_percent_value = 0.0;
+        } else if soil_moisture_percent_value > 100.0 {
+            soil_moisture_percent_value = 1.0;
+        }
+
         let temperature: f32;
         let humidity: f32;
 
@@ -111,7 +123,7 @@ impl<'lifetime> SensorsFacade<'lifetime> {
         }
         
         return SensorsValues::new(
-            soil_moisture_sensor_value,
+            soil_moisture_percent_value,
             temperature,
             humidity,
         );

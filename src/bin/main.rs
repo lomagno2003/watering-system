@@ -116,6 +116,7 @@ async fn main(spawner: Spawner) {
             .unwrap(),
     );
     mqtt_facade.send_message(home_assistant.get_discovery_message_pump().unwrap());
+    pump_facade.turn_off();
 
     loop {
         let sensors_values: SensorsValues = sensors_facade.read_values().await;
