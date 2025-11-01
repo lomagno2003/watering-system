@@ -85,8 +85,8 @@ async fn main(spawner: Spawner) {
     let (ip, port) = mdns.query_service(env!("MQTT_SERVICE"), stack).await;
     info!("Got IP: {} and Port: {}", ip, port);
 
-    let home_assistant: HomeAssistantFacade =
-        HomeAssistantFacade::new(HomeAssistantFacadeConfig::new_from_env());
+    let home_assistant_config = HomeAssistantFacadeConfig::new_from_env();
+    let home_assistant: HomeAssistantFacade = HomeAssistantFacade::new(home_assistant_config);
     let pump_topic = home_assistant.get_pump_topic();
     let mqtt_facade_config = MqttFacadeConfig::new(ip, port, "MyDevice", &pump_topic);
     spawner
@@ -97,59 +97,30 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     info!("IP Fetched! MQTT worker started..");
-    info!(
-        "Memory after network setup - Free: {}, Used: {}",
-        esp_alloc::HEAP.free(),
-        esp_alloc::HEAP.used()
-    );
 
-    let mut sensors_facade: SensorsFacade =
+    let sensors_facade: SensorsFacade =
         SensorsFacade::new(peripherals.GPIO35, peripherals.ADC1, peripherals.GPIO33);
-    let mut pump_facade: PumpFacade = PumpFacade::new(peripherals.GPIO27);
+    let pump_facade: PumpFacade = PumpFacade::new(peripherals.GPIO27);
 
-    let mut mqtt_facade = MqttFacade::new(mqtt_facade_config);
-    mqtt_facade.send_message(home_assistant.get_discovery_message_temperature().unwrap());
-    mqtt_facade.send_message(home_assistant.get_discovery_message_humidity().unwrap());
-    mqtt_facade.send_message(
-        home_assistant
-            .get_discovery_message_soil_moisture()
-            .unwrap(),
-    );
-    mqtt_facade.send_message(home_assistant.get_discovery_message_pump().unwrap());
-    pump_facade.turn_off();
+    spawner
+        .spawn(sensors_loop(
+            sensors_facade,
+            home_assistant_config,
+            mqtt_facade_config.clone(),
+        ))
+        .unwrap();
+    spawner
+        .spawn(pump_loop(
+            pump_facade,
+            home_assistant_config,
+            mqtt_facade_config.clone(),
+        ))
+        .unwrap();
 
+    // Keep the main function alive
     loop {
-        let sensors_values: SensorsValues = sensors_facade.read_values().await;
-        info!(
-            "Sensors values: {:?}, {:?}, {:?}",
-            sensors_values.soil_moisture_sensor_value,
-            sensors_values.temperature,
-            sensors_values.humidity
-        );
-
-        let message = home_assistant.get_state_mqtt_message(sensors_values, pump_facade.is_on());
-        mqtt_facade.send_message(message.unwrap());
-
-        match mqtt_facade.poll_message() {
-            Some(message) => {
-                info!("Received message: {:?}", message.content);
-                if pump_facade.is_on() == true {
-                    info!("Pump is on, turning off..");
-                    pump_facade.turn_off();
-                } else {
-                    info!("Pump is off, turning on..");
-                    pump_facade.turn_on();
-                }
-            }
-            None => {
-                info!("No message received");
-            }
-        }
-
-        Timer::after(Duration::from_millis(2000)).await;
+        Timer::after(Duration::from_secs(60)).await;
     }
-
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.0/examples/src/bin
 }
 
 #[embassy_executor::task]
@@ -178,3 +149,78 @@ async fn mqtt_receiver_task(
         .run_receiver_worker(stack)
         .await
 }
+
+#[embassy_executor::task]
+async fn sensors_loop(
+    mut sensors_facade: SensorsFacade<'static>,
+    home_assistant_config: HomeAssistantFacadeConfig,
+    mqtt_facade_config: MqttFacadeConfig,
+) -> ! {
+    let home_assistant: HomeAssistantFacade = HomeAssistantFacade::new(home_assistant_config);
+    let mut mqtt_facade = MqttFacade::new(mqtt_facade_config);
+    
+    // Send discovery messages
+    mqtt_facade.send_message(home_assistant.get_discovery_message_temperature().unwrap());
+    mqtt_facade.send_message(home_assistant.get_discovery_message_humidity().unwrap());
+    mqtt_facade.send_message(
+        home_assistant
+            .get_discovery_message_soil_moisture()
+            .unwrap(),
+    );
+    mqtt_facade.send_message(home_assistant.get_discovery_message_pump().unwrap());
+
+    loop {
+        let sensors_values: SensorsValues = sensors_facade.read_values().await;
+        info!(
+            "Sensors values: {:?}, {:?}, {:?}",
+            sensors_values.soil_moisture_sensor_value,
+            sensors_values.temperature,
+            sensors_values.humidity
+        );
+
+        let message = home_assistant.get_sensors_state_mqtt_message(sensors_values);
+        mqtt_facade.send_message(message.unwrap());
+
+        Timer::after(Duration::from_secs(10)).await;
+    }
+}
+
+
+#[embassy_executor::task]
+async fn pump_loop(
+    mut pump_facade: PumpFacade<'static>,
+    home_assistant_config: HomeAssistantFacadeConfig,
+    mqtt_facade_config: MqttFacadeConfig,
+) -> ! {
+    let home_assistant: HomeAssistantFacade = HomeAssistantFacade::new(home_assistant_config);
+    let mut mqtt_facade = MqttFacade::new(mqtt_facade_config);
+    
+    // Send discovery messages
+    mqtt_facade.send_message(home_assistant.get_discovery_message_pump().unwrap());
+    pump_facade.turn_off();
+
+    loop {
+        match mqtt_facade.poll_message() {
+            Some(message) => {
+                info!("Received message: {:?}", message.content);
+                if pump_facade.is_on() == true {
+                    info!("Pump is on, turning off..");
+                    pump_facade.turn_off();
+                } else {
+                    info!("Pump is off, turning on..");
+                    pump_facade.turn_on();
+                }
+
+                let message = home_assistant.get_pump_state_mqtt_message(pump_facade.is_on());
+                mqtt_facade.send_message(message.unwrap());
+            }
+            None => {
+                info!("No message received");
+            }
+        }
+
+        Timer::after(Duration::from_millis(2000)).await;
+    }
+}
+
+

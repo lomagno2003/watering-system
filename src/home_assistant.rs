@@ -1,6 +1,7 @@
 use crate::mqtt::MqttMessage;
 use crate::sensors::SensorsValues;
 
+#[derive(Clone, Copy)]
 pub struct HomeAssistantFacadeConfig {
     device_id: &'static str
 }
@@ -33,9 +34,8 @@ impl HomeAssistantFacade {
         }
     }
 
-    pub fn get_state_mqtt_message(
+    pub fn get_pump_state_mqtt_message(
         &self, 
-        sensors_values: SensorsValues,
         pump_on: bool
     ) -> Option<MqttMessage> {
         let mut topic_buffer: String<128> = String::new();
@@ -43,11 +43,29 @@ impl HomeAssistantFacade {
 
         write!(&mut topic_buffer, "homeassistant/device/{}/state", self._config.device_id).ok()?;
         write!(&mut message_buffer,
-            r#"{{"temperature":{},"humidity":{},"soil_moisture":{},"pump_state":"{}"}}"#,
+            r#"{{"pump_state":"{}"}}"#,
+            if pump_on {"ON"} else {"OFF"}
+        ).ok()?;
+
+        MqttMessage::new(
+            topic_buffer.as_str(),
+            message_buffer.as_str()
+        )
+    }
+
+    pub fn get_sensors_state_mqtt_message(
+        &self, 
+        sensors_values: SensorsValues,
+    ) -> Option<MqttMessage> {
+        let mut topic_buffer: String<128> = String::new();
+        let mut message_buffer: String<256> = String::new();
+
+        write!(&mut topic_buffer, "homeassistant/device/{}/state", self._config.device_id).ok()?;
+        write!(&mut message_buffer,
+            r#"{{"temperature":{},"humidity":{},"soil_moisture":{}}}"#,
             sensors_values.temperature,
             sensors_values.humidity,
             sensors_values.soil_moisture_sensor_value,
-            if pump_on {"ON"} else {"OFF"}
         ).ok()?;
 
         MqttMessage::new(
